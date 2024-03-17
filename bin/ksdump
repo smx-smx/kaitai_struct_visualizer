@@ -26,6 +26,15 @@ parser = OptionParser.new do |opts|
   opts.on('-I', '--import-path [DIRECTORIES]', '.ksy library search path(s) for imports (see also KSPATH env variable)') do |v|
     options[:import_path] = v
   end
+  
+  opts.on('--opaque-types', "opaque types allowed, default: false") do |v|
+    options[:opaque_types] = "true"
+  end
+
+  opts.on('-r', '--require [PATH]', 'load ("require") .rb file into Ruby process') do |v|
+    $LOAD_PATH << '.' unless $LOAD_PATH.include?('.')
+    require v
+  end
 
   FORMATS = %w[json xml yaml].freeze
   opts.on('-f', '--format FORMAT', FORMATS, "choose dump format - #{FORMATS.join(', ')} (default: #{options[:format]})") do |v|
@@ -93,17 +102,23 @@ def obj_to_h(obj)
       k = meth.to_s
       next if k =~ /^_/ # or attrs.include?(k)
 
-      el = obj.send(meth)
-      v = obj_to_h(el)
-      root[k] = v unless v.nil?
+      begin 
+        el = obj.send(meth)
+        v = obj_to_h(el)
+        root[k] = v unless v.nil?
+      rescue Interrupt 
+        raise
+      rescue Exception => e
+        puts "Failure in reading #{meth}, #{e.message}"
+      end
     end
 
-    # obj.instance_variables.each { |k|
-    #   k = k.to_s
-    #   next if k =~ /^@_/
-    #   el = obj.instance_eval(k)
-    #   root[k[1..-1]] = obj_to_h(el)
-    # }
+    obj.instance_variables.each { |k|
+      k = k.to_s
+      next if k =~ /^@_/
+      el = obj.instance_eval(k)
+      root[k[1..-1]] = obj_to_h(el)
+    }
     root
   end
 end
